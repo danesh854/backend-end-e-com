@@ -2,43 +2,58 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "your-dockerhub-username/backend"
+        KUBECONFIG = '/var/lib/jenkins/.kube/config'
+        AWS_DEFAULT_REGION = 'ap-southeast-1'
+        IMAGE_NAME = 'daneshkabade45/backend'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        DEPLOYMENT_NAME = 'backend-deployment'
+        CONTAINER_NAME = 'backend'
+        NAMESPACE = 'backend'
     }
 
     stages {
 
         stage('Clone Code') {
             steps {
-                git 'https://github.com/your-username/backend-end-e-com.git'
+                git branch: 'main', url: 'https://github.com/danesh854/backend-end-e-com.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $DOCKER_IMAGE .'
+                sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
             }
         }
 
-        stage('Login to DockerHub') {
+        stage('Push Docker Image') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-creds',
                     usernameVariable: 'USER',
-                    passwordVariable: 'PASS')]) {
-                    sh 'echo $PASS | docker login -u $USER --password-stdin'
+                    passwordVariable: 'PASS'
+                )]) {
+                    sh '''
+                    echo $PASS | docker login -u $USER --password-stdin
+                    docker push $IMAGE_NAME:$IMAGE_TAG
+                    docker logout
+                    '''
                 }
             }
         }
 
-        stage('Push Image') {
+        stage('Deploy to EKS') {
             steps {
-                sh 'docker push $DOCKER_IMAGE'
-            }
-        }
+                sh '''
+                export KUBECONFIG=/var/lib/jenkins/.kube/config
 
-        stage('Deploy to Kubernetes') {
-            steps {
-                sh 'kubectl apply -f deployment.yaml'
+                kubectl apply -f k8s/deployment.yaml -n $NAMESPACE
+                kubectl apply -f k8s/service.yaml -n $NAMESPACE
+
+                kubectl set image deployment/$DEPLOYMENT_NAME \
+                $CONTAINER_NAME=$IMAGE_NAME:$IMAGE_TAG -n $NAMESPACE
+
+                kubectl rollout status deployment/$DEPLOYMENT_NAME -n $NAMESPACE
+                '''
             }
         }
     }
