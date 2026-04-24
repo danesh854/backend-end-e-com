@@ -44,16 +44,14 @@ pipeline {
         stage('Deploy to EKS') {
             steps {
                 sh '''
-                export KUBECONFIG=/var/lib/jenkins/.kube/config
+                   kubectl apply -f k8s/deployment.yaml -n $NAMESPACE
+                   kubectl apply -f k8s/service.yaml -n $NAMESPACE
 
-                kubectl apply -f k8s/deployment.yaml -n $NAMESPACE
-                kubectl apply -f k8s/service.yaml -n $NAMESPACE
+                   kubectl set image deployment/$DEPLOYMENT_NAME \
+                   $CONTAINER_NAME=$IMAGE_NAME:$IMAGE_TAG -n $NAMESPACE
 
-                kubectl set image deployment/$DEPLOYMENT_NAME \
-                $CONTAINER_NAME=$IMAGE_NAME:$IMAGE_TAG -n $NAMESPACE
-
-                kubectl rollout status deployment/$DEPLOYMENT_NAME -n $NAMESPACE
-                '''
+                   kubectl rollout status deployment/$DEPLOYMENT_NAME -n $NAMESPACE
+                   '''
             }
         }
     }
